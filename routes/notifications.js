@@ -123,7 +123,7 @@ async function sendNotificationToAllUsers(title, body, meta) {
   for (let i = 0; i < webTokens.length; i += chunkSize) {
     const chunk = webTokens.slice(i, i + chunkSize);
 
-    await admin.messaging().sendEachForMulticast({
+    await admin.messaging().sendMulticast({
       notification: { title, body },
       tokens: chunk,
       data: dataPayload,

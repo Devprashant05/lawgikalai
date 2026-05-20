@@ -4,7 +4,7 @@ const News = require("../models/News");
 const { uploadToS3, getPresignedUrl } = require("../utils/s3Client");
 const { s3 } = require("../utils/s3Client");
 const notifications = require("./notifications");
-const { sendNotificationToAllUsers } = notifications;
+const { sendNotificationToAllUsers } = require("./notifications");
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() }); // store in memory buffer
@@ -45,13 +45,13 @@ router.post("/upload", upload.single("image"), async (req, res) => {
 
     await news.save();
     // ✅ Broadcast notification to all users
-    await sendNotificationToAllUsers(
+    sendNotificationToAllUsers(
       `📰 Latest News: ${title}`,
       content.slice(0, 80) + "...",
       {
         type: "news",
         entityId: news._id,
-      }
+      },
     );
 
     res.status(201).json({

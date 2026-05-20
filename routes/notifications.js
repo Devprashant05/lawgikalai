@@ -7,6 +7,9 @@ const Notification = require("../models/Notification");
 const { verifyToken } = require("../middleware/verifyToken");
 const { lightVerifyToken } = require("../middleware/lightVerifyToken");
 const axios = require("axios");
+const { Expo } = require("expo-server-sdk");
+
+const expo = new Expo();
 
 // ✅ Save FCM token for the logged-in user
 router.post("/save-token", lightVerifyToken, async (req, res) => {
@@ -49,19 +52,53 @@ router.post("/save-token", lightVerifyToken, async (req, res) => {
 });
 
 async function sendExpoNotifications(tokens, title, body, dataPayload) {
-  if (!tokens.length) return;
+  try {
+    if (!tokens?.length) return;
 
-  const messages = tokens.map((token) => ({
-    to: token,
-    sound: "default",
-    title,
-    body,
-    data: dataPayload,
-  }));
+    // ✅ Remove duplicates
+    const uniqueTokens = [...new Set(tokens)];
 
-  await axios.post("https://exp.host/--/api/v2/push/send", messages, {
-    headers: { "Content-Type": "application/json" },
-  });
+    // ✅ Keep only valid Expo tokens
+    const validTokens = uniqueTokens.filter((token) =>
+      Expo.isExpoPushToken(token),
+    );
+
+    if (!validTokens.length) {
+      console.log("⚠️ No valid Expo tokens");
+      return;
+    }
+
+    // ✅ Create messages
+    const messages = validTokens.map((token) => ({
+      to: token,
+      sound: "default",
+      title,
+      body,
+      data: dataPayload,
+    }));
+
+    // ✅ Chunk notifications
+    const chunks = expo.chunkPushNotifications(messages);
+
+    for (const chunk of chunks) {
+      try {
+        const tickets = await expo.sendPushNotificationsAsync(chunk);
+
+        console.log("✅ Expo tickets:", tickets);
+
+        // Optional: remove invalid tokens automatically
+        tickets.forEach((ticket, index) => {
+          if (ticket.status === "error") {
+            console.log(`❌ Failed token: ${chunk[index].to}`, ticket.message);
+          }
+        });
+      } catch (chunkError) {
+        console.error("❌ Expo chunk error:", chunkError.message);
+      }
+    }
+  } catch (err) {
+    console.error("❌ sendExpoNotifications Error:", err.message);
+  }
 }
 
 // ✅ Helper: Send notification to all users
@@ -81,10 +118,14 @@ async function sendNotificationToAllUsers(title, body, meta) {
     entityId: meta.entityId.toString(),
   };
 
-  if (webTokens.length) {
+  const chunkSize = 500;
+
+  for (let i = 0; i < webTokens.length; i += chunkSize) {
+    const chunk = webTokens.slice(i, i + chunkSize);
+
     await admin.messaging().sendEachForMulticast({
       notification: { title, body },
-      tokens: webTokens,
+      tokens: chunk,
       data: dataPayload,
     });
   }

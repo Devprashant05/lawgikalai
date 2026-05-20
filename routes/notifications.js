@@ -118,20 +118,36 @@ async function sendNotificationToAllUsers(title, body, meta) {
     entityId: meta.entityId.toString(),
   };
 
-  const chunkSize = 500;
+  try {
+    if (webTokens.length) {
+      const chunkSize = 500;
 
-  for (let i = 0; i < webTokens.length; i += chunkSize) {
-    const chunk = webTokens.slice(i, i + chunkSize);
+      for (let i = 0; i < webTokens.length; i += chunkSize) {
+        const chunk = webTokens.slice(i, i + chunkSize);
 
-    await admin.messaging().sendMulticast({
-      notification: { title, body },
-      tokens: chunk,
-      data: dataPayload,
-    });
+        try {
+          const response = await admin.messaging().sendEachForMulticast({
+            notification: { title, body },
+            tokens: chunk,
+            data: dataPayload,
+          });
+
+          console.log("✅ Firebase sent:", response.successCount);
+        } catch (err) {
+          console.error("❌ Firebase multicast error:", err.message);
+        }
+      }
+    }
+  } catch (error) {
+    console.error("❌ sendNotificationToAllUsers Error:", error.message);
   }
 
-  if (expoTokens.length) {
-    await sendExpoNotifications(expoTokens, title, body, dataPayload);
+  try {
+    if (expoTokens.length) {
+      await sendExpoNotifications(expoTokens, title, body, dataPayload);
+    }
+  } catch (error) {
+    console.error("❌ sendNotificationToAllUsers Expo Error:", error.message);
   }
 
   await Notification.insertMany(
@@ -141,7 +157,7 @@ async function sendNotificationToAllUsers(title, body, meta) {
       body,
       type: meta.type,
       entityId: meta.entityId,
-    }))
+    })),
   );
 }
 
